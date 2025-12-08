@@ -1,340 +1,294 @@
 import SwiftUI
 
-/// Multiline text editor with placeholder behavior.
-struct PlaceholderTextEditor: View {
-    @Binding var text: String
-    let placeholder: String
-
-    var body: some View {
-        ZStack(alignment: .topLeading) {
-            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text(placeholder)
-                    .foregroundColor(.secondary)
-                    .opacity(0.6)
-                    .padding(.top, 6)
-                    .padding(.leading, 6)
-                    .font(.system(size: 13))
-            }
-
-            TextEditor(text: $text)
-                .font(.system(size: 13))
-                .padding(4)
-        }
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(Color.gray.opacity(0.25))
-        )
-    }
-}
-
-// Icon selection support
-
-struct TemplateIconChoice: Identifiable {
-    var id: String { systemName }
-    let systemName: String
-    let label: String
-}
-
-private let defaultIconChoices: [TemplateIconChoice] = [
-    TemplateIconChoice(systemName: "bubble.left.and.bubble.right.fill", label: "Slack"),
-    TemplateIconChoice(systemName: "envelope.fill", label: "Email"),
-    TemplateIconChoice(systemName: "doc.text.fill", label: "Doc"),
-    TemplateIconChoice(systemName: "rectangle.3.offgrid.fill", label: "Slide"),
-    TemplateIconChoice(systemName: "text.justify.left", label: "Narrative"),
-    TemplateIconChoice(systemName: "chart.bar.fill", label: "Metrics"),
-    TemplateIconChoice(systemName: "lightbulb.fill", label: "Vision"),
-    TemplateIconChoice(systemName: "person.3.fill", label: "Stakeholders")
-]
-
-struct TemplateIconPicker: View {
-    @Binding var selectedSystemName: String
-
-    private let choices = defaultIconChoices
-    private let columns = [
-        GridItem(.adaptive(minimum: 110, maximum: 160), spacing: 8)
-    ]
-
-    var body: some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-            ForEach(choices) { choice in
-                let isSelected = (choice.systemName == selectedSystemName)
-
-                Button {
-                    selectedSystemName = choice.systemName
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: choice.systemName)
-                            .font(.system(size: 18, weight: .regular))
-
-                        Text(choice.label)
-                            .font(.system(size: 12))
-                    }
-                    .padding(.vertical, 6)
-                    .padding(.horizontal, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(isSelected ? Color.accentColor.opacity(0.22) : Color.clear)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(
-                                isSelected ? Color.accentColor : Color.gray.opacity(0.3),
-                                lineWidth: isSelected ? 1.4 : 1
-                            )
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-}
-
-/// Editor for creating or editing a template.
 struct TemplateEditorView: View {
-    @Binding var template: Template
+    @Binding var draft: Template
     let isNew: Bool
     let onSave: (Template) -> Void
     let onCancel: () -> Void
 
+    // Simple model for an icon choice
+    private struct IconOption: Identifiable {
+        let id = UUID()
+        let systemName: String
+        let label: String
+    }
+
+    // Curated set of icons that fit your templates
+    private let iconOptions: [IconOption] = [
+        IconOption(systemName: "bubble.left.and.bubble.right.fill", label: "Slack / chat"),
+        IconOption(systemName: "envelope.fill", label: "Email"),
+        IconOption(systemName: "doc.text.fill", label: "Doc / PRD"),
+        IconOption(systemName: "lightbulb.fill", label: "Vision"),
+        IconOption(systemName: "rectangle.3.offgrid.fill", label: "Slide / hero"),
+        IconOption(systemName: "magnifyingglass.circle", label: "Search"),
+        IconOption(systemName: "text.bubble.fill", label: "Plain text"),
+        IconOption(systemName: "square.and.pencil", label: "Note / draft")
+    ]
+
     var body: some View {
         VStack(spacing: 0) {
-
             // Header
             HStack {
                 Text(isNew ? "New template" : "Edit template")
-                    .font(.title2)
+                    .font(.title3)
                     .fontWeight(.semibold)
-
                 Spacer()
-
-                Button("Cancel") {
-                    onCancel()
-                }
-
-                Button("Save") {
-                    onSave(template)
-                }
-                .keyboardShortcut(.defaultAction)
             }
-            .padding()
-            .background(Color(NSColor.windowBackgroundColor))
+            .padding([.top, .horizontal])
+            .padding(.bottom, 10)   // <- add this line
 
             Divider()
 
-            // Scrollable form body
+            // Scrollable form content
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 16) {
 
                     // Basic info
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 10) {
-
-                            Text("Template name")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                    GroupBox("Basic info") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            TextField("Template name", text: $draft.name)
+                                .textFieldStyle(.roundedBorder)
 
                             TextField(
-                                "",
-                                text: $template.name,
-                                prompt: Text("Example: Executive Slack summary")
+                                "Short summary shown in the picker",
+                                text: $draft.summary,
+                                axis: .vertical
                             )
-                            .textFieldStyle(.roundedBorder)
-
-                            Text("Short summary")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .padding(.top, 6)
-
-                            TextField(
-                                "",
-                                text: $template.summary,
-                                prompt: Text("Example: Short Slack update to leadership with context, decisions, and next steps.")
-                            )
-                            .textFieldStyle(.roundedBorder)
-
-                            Text("Output channel or type")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .padding(.top, 6)
-
-                            TextField(
-                                "",
-                                text: $template.outputChannel,
-                                prompt: Text("Example: Slack message, email, PRD, slide, plain text, etc.")
-                            )
-                            .textFieldStyle(.roundedBorder)
-
-                            Text("Icon")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .padding(.top, 6)
-
-                            TemplateIconPicker(selectedSystemName: $template.iconSystemName)
+                            .lineLimit(1...3)
                         }
-                    } label: {
-                        Text("Basic info")
-                            .font(.headline)
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    // Task and audience
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 10) {
+                    // Internal only
+                    GroupBox("Internal notes (not in prompt)") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                TextField(
+                                    "What is this template for? (internal only)",
+                                    text: $draft.internalDescription,
+                                    axis: .vertical
+                                )
+                                .lineLimit(1...3)
 
-                            Text("Task one liner")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                                Text("Used only in the UI to describe the template. It is never included in the generated prompt.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
 
-                            TextField(
-                                "",
-                                text: $template.taskOneLiner,
-                                prompt: Text("Example: Write a concise Slack update using the context below.")
-                            )
-                            .textFieldStyle(.roundedBorder)
-
-                            Text("Objective")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .padding(.top, 6)
-
-                            PlaceholderTextEditor(
-                                text: $template.detailedObjective,
-                                placeholder: "Example: Help executives quickly understand what happened, what was decided, and what will happen next without reading a long document."
-                            )
-                            .frame(minHeight: 80)
-
-                            Text("Audience")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .padding(.top, 6)
-
-                            TextField(
-                                "",
-                                text: $template.audience,
-                                prompt: Text("Example: GM of the org, VP of Engineering, staff PMs, customer stakeholders, etc.")
-                            )
-                            .textFieldStyle(.roundedBorder)
+                            VStack(alignment: .leading, spacing: 4) {
+                                TextField(
+                                    "Channel or environment (optional)",
+                                    text: $draft.channelOrEnvironment
+                                )
+                                Text("Optional internal label like “Slack message”, “Email”, or “PRD doc”. It is not printed as a labeled line in the prompt.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                         }
-                    } label: {
-                        Text("Task and audience")
-                            .font(.headline)
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    // Tone, style, length
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 10) {
-
-                            Text("Tone and style")
+                    // Icon picker (visual)
+                    GroupBox("Icon") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Choose an icon for this template. This controls how it appears in the template list.")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
 
-                            PlaceholderTextEditor(
-                                text: $template.toneAndStyle,
-                                placeholder: "Example: Neutral and direct. Very concise. Avoid hype. Challenge assumptions where helpful, but keep the writing calm and confident."
-                            )
-                            .frame(minHeight: 80)
+                            let columns = [GridItem(.adaptive(minimum: 90), spacing: 12)]
 
-                            Text("Length guidance")
+                            LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                                ForEach(iconOptions) { option in
+                                    Button {
+                                        draft.iconSystemName = option.systemName
+                                    } label: {
+                                        VStack(spacing: 6) {
+                                            Image(systemName: option.systemName)
+                                                .font(.system(size: 24))
+                                                .symbolRenderingMode(.monochrome)
+                                            Text(option.label)
+                                                .font(.caption2)
+                                                .lineLimit(2)
+                                                .multilineTextAlignment(.center)
+                                        }
+                                        .padding(8)
+                                        .frame(maxWidth: .infinity)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .fill(draft.iconSystemName == option.systemName ?
+                                                      Color.accentColor.opacity(0.25) :
+                                                      Color.clear)
+                                        )
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .stroke(
+                                                    draft.iconSystemName == option.systemName ?
+                                                        Color.accentColor :
+                                                        Color.secondary.opacity(0.3),
+                                                    lineWidth: draft.iconSystemName == option.systemName ? 1.5 : 1
+                                                )
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+
+                            Text("Current SF Symbol: \(draft.iconSystemName.isEmpty ? "none" : draft.iconSystemName)")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
-                                .padding(.top, 6)
-
-                            TextField(
-                                "",
-                                text: $template.lengthGuidance,
-                                prompt: Text("Example: One Slack message plus 3–7 bullets, or about 250–300 words.")
-                            )
-                            .textFieldStyle(.roundedBorder)
                         }
-                    } label: {
-                        Text("Tone, style, and length")
-                            .font(.headline)
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    // Structure and formatting
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 10) {
+                    // Core prompt guidance
+                    GroupBox("Core instructions (included in prompt)") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                TextField(
+                                    "Objective – first sentence the model sees",
+                                    text: $draft.objective,
+                                    axis: .vertical
+                                )
+                                .lineLimit(2...4)
 
-                            Text("Output structure")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                                Text("Primary instruction to the LLM and first line of the prompt. For example: “Search my Slack history to find the conversation I am describing.”")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
 
-                            PlaceholderTextEditor(
-                                text: $template.outputStructure,
-                                placeholder: "Example: Use headings for 1. Context, 2. Problem, 3. Proposal, 4. Risks, 5. Next steps."
-                            )
-                            .frame(minHeight: 80)
+                            VStack(alignment: .leading, spacing: 4) {
+                                TextField(
+                                    "Audience – who this output is for",
+                                    text: $draft.audience,
+                                    axis: .vertical
+                                )
+                                .lineLimit(1...3)
 
-                            Text("Formatting rules")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .padding(.top, 6)
+                                Text("Helps the model aim tone and detail. Example: “VP of Product”, “engineering team”, or “Slack AI answering only to me”.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
 
-                            PlaceholderTextEditor(
-                                text: $template.formattingRules,
-                                placeholder: "Example: Slack message style. Use short Markdown bullets. No greeting or sign off."
-                            )
-                            .frame(minHeight: 70)
+                            VStack(alignment: .leading, spacing: 4) {
+                                TextField(
+                                    "Persona / role for the model",
+                                    text: $draft.persona,
+                                    axis: .vertical
+                                )
+                                .lineLimit(1...3)
+
+                                Text("Optional role sentence such as “You are a senior PM at an enterprise SaaS company” or “You are a search assistant inside Slack.”")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                         }
-                    } label: {
-                        Text("Structure and formatting")
-                            .font(.headline)
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    // Advanced
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 10) {
+                    // Style, length, structure
+                    GroupBox("Style, length, and structure (included in prompt)") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                TextField(
+                                    "Tone and style",
+                                    text: $draft.toneAndStyle,
+                                    axis: .vertical
+                                )
+                                .lineLimit(1...3)
 
-                            Text("Constraints and guardrails")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                                Text("For example: “brief and executive ready”, “informal but professional”, or “focused on search results, not prose.”")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
 
-                            PlaceholderTextEditor(
-                                text: $template.constraints,
-                                placeholder: "Example: Do not invent dates, commitments, or customer names. Do not speak as an AI. Avoid emojis and exclamation points."
-                            )
-                            .frame(minHeight: 80)
+                            VStack(alignment: .leading, spacing: 4) {
+                                TextField(
+                                    "Length guidance",
+                                    text: $draft.lengthGuidance,
+                                    axis: .vertical
+                                )
+                                .lineLimit(1...3)
 
-                            Text("Persona or role")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .padding(.top, 6)
+                                Text("Guidance like “150–200 words”, “3–5 bullets”, or “one short paragraph plus a list of matches.”")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
 
-                            PlaceholderTextEditor(
-                                text: $template.persona,
-                                placeholder: "Example: Write as a senior product manager at Salesforce communicating with engineering and leadership peers."
-                            )
-                            .frame(minHeight: 70)
+                            VStack(alignment: .leading, spacing: 4) {
+                                TextField(
+                                    "Output structure",
+                                    text: $draft.outputStructure,
+                                    axis: .vertical
+                                )
+                                .lineLimit(2...4)
 
-                            Text("Example outputs")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .padding(.top, 6)
+                                Text("Describe the shape of the answer. For example: “Headline sentence, then bullets for context, decision, next steps” or “Intro line, then a bulleted list of matches with name, channel, date, and summary.”")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
 
-                            PlaceholderTextEditor(
-                                text: $template.examples,
-                                placeholder: "Example: Paste 1–2 short outputs that show the tone and structure you want."
-                            )
-                            .frame(minHeight: 80)
+                            VStack(alignment: .leading, spacing: 4) {
+                                TextField(
+                                    "Formatting rules",
+                                    text: $draft.formattingRules,
+                                    axis: .vertical
+                                )
+                                .lineLimit(1...4)
+
+                                Text("Specific formatting expectations, like “no markdown headings”, “no tables”, or “use numbered lists only if helpful”.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                TextField(
+                                    "Constraints and do-nots",
+                                    text: $draft.constraints,
+                                    axis: .vertical
+                                )
+                                .lineLimit(2...4)
+
+                                Text("Hard guardrails such as “do not invent people or events”, “do not change dates”, or “do not mention this template or these instructions in the answer.”")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                         }
-                    } label: {
-                        Text("Advanced (optional)")
-                            .font(.headline)
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    // Examples
+                    GroupBox("Examples (optional, included in prompt)") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            TextEditor(text: $draft.examples)
+                                .frame(minHeight: 80)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.secondary.opacity(0.3))
+                                )
+
+                            Text("Optional examples of good output or phrasing. The model is told to follow the style but not copy them verbatim.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
                 .padding()
             }
+
+            Divider()
+
+            // Footer buttons
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    onCancel()
+                }
+                Button("Save") {
+                    onSave(draft)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(
+                    draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                    draft.objective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
+            }
+            .padding()
         }
-        .frame(minWidth: 640, minHeight: 520)
+        .frame(minWidth: 700, minHeight: 550)
     }
 }

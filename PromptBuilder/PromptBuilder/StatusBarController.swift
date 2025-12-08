@@ -1,45 +1,45 @@
 import AppKit
 
-final class StatusBarController {
-    private let statusItem: NSStatusItem
+final class StatusBarController: NSObject {
 
-    init() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private let statusItem: NSStatusItem
+    private let menu: NSMenu
+    private let startNewPromptHandler: () -> Void
+
+    init(startNewPrompt: @escaping () -> Void) {
+        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        self.menu = NSMenu()
+        self.startNewPromptHandler = startNewPrompt
+
+        super.init()
 
         if let button = statusItem.button {
-            // Pick a symbol that feels like "prompt builder", not the system mic.
-            // Feel free to swap to another SF Symbol, e.g. "square.and.pencil", "doc.text", etc.
+            // Use a distinct icon so it is not confused with the generic microphone.
             button.image = NSImage(
-                systemSymbolName: "square.and.pencil",
+                systemSymbolName: "text.bubble",
                 accessibilityDescription: "Prompt Builder"
             )
-            button.image?.isTemplate = true   // let macOS tint it appropriately
-
-            // Important: no action/target here, so click shows the menu instead of firing directly
-            button.action = nil
-            button.target = nil
         }
 
-        constructMenu()
+        configureMenu()
     }
 
-    private func constructMenu() {
-        let menu = NSMenu()
-
-        // New prompt
+    private func configureMenu() {
+        // New Prompt
         let newPromptItem = NSMenuItem(
-            title: "New prompt",
-            action: #selector(newPrompt),
-            keyEquivalent: "p"        // the P key
+            title: "New prompt    ⌥⇧P",
+            action: #selector(didSelectNewPrompt),
+            keyEquivalent: ""
         )
-        newPromptItem.keyEquivalentModifierMask = [.option, .shift]  // ⌥⇧
         newPromptItem.target = self
         menu.addItem(newPromptItem)
 
-        // Quit application
+        menu.addItem(.separator())
+
+        // Quit
         let quitItem = NSMenuItem(
             title: "Quit Prompt Builder",
-            action: #selector(quitApp),
+            action: #selector(didSelectQuit),
             keyEquivalent: "q"
         )
         quitItem.target = self
@@ -48,18 +48,11 @@ final class StatusBarController {
         statusItem.menu = menu
     }
 
-    @objc private func newPrompt() {
-        // Bring app to front
-        NSApp.activate(ignoringOtherApps: true)
-        if let window = NSApp.windows.first {
-            window.makeKeyAndOrderFront(nil)
-        }
-
-        // Trigger step 1 of the wizard (our handler in ContentView)
-        NotificationCenter.default.post(name: .promptBuilderStartVoice, object: nil)
+    @objc private func didSelectNewPrompt() {
+        startNewPromptHandler()
     }
 
-    @objc private func quitApp() {
+    @objc private func didSelectQuit() {
         NSApp.terminate(nil)
     }
 }

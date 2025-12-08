@@ -5,55 +5,94 @@ import AppKit
 func buildPrompt(template: Template, notes: String) -> String {
     var lines: [String] = []
 
-    lines.append("You are helping me draft content using a reusable prompt template.")
-
-    if !template.taskOneLiner.isEmpty {
-        lines.append("Task: \(template.taskOneLiner)")
-    }
-    if !template.detailedObjective.isEmpty {
-        lines.append("Objective: \(template.detailedObjective)")
-    }
-    if !template.outputChannel.isEmpty {
-        lines.append("Channel or output type: \(template.outputChannel).")
-    }
-    if !template.audience.isEmpty {
-        lines.append("Audience: \(template.audience)")
-    }
-    if !template.toneAndStyle.isEmpty {
-        lines.append("Tone and style: \(template.toneAndStyle)")
-    }
-    if !template.lengthGuidance.isEmpty {
-        lines.append("Length guidance: \(template.lengthGuidance)")
-    }
-    if !template.outputStructure.isEmpty {
-        lines.append("Output structure: \(template.outputStructure)")
-    }
-    if !template.formattingRules.isEmpty {
-        lines.append("Formatting rules: \(template.formattingRules)")
-    }
-    if !template.constraints.isEmpty {
-        lines.append("Constraints and guardrails: \(template.constraints)")
-    }
-    if !template.persona.isEmpty {
-        lines.append("Persona or role: \(template.persona)")
-    }
-    if !template.examples.isEmpty {
-        lines.append("Here are example outputs that illustrate the desired style:")
-        lines.append(template.examples)
-    }
-
-    lines.append("")
-
-    let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-    if !trimmedNotes.isEmpty {
-        lines.append("Context from me (use this carefully, do not invent missing facts):")
-        lines.append(trimmedNotes)
+    // 1. Objective – always first
+    let objective = template.objective.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !objective.isEmpty {
+        lines.append(objective)
     } else {
-        lines.append("Context: I will provide additional context separately if needed.")
+        // Defensive fallback if someone left objective blank
+        lines.append("Help me with the task described below.")
     }
 
+    // 2. Role, environment, and audience (if present)
+    var roleLines: [String] = []
+
+    let persona = template.persona.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !persona.isEmpty {
+        // Assume persona may already start with "You are". Do not wrap it again.
+        roleLines.append(persona)
+    }
+
+    let channel = template.channelOrEnvironment.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !channel.isEmpty {
+        roleLines.append("You are working in \(channel).")
+    }
+
+    let audience = template.audience.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !audience.isEmpty {
+        roleLines.append("The primary audience is: \(audience).")
+    }
+
+    if !roleLines.isEmpty {
+        lines.append("")
+        lines.append(roleLines.joined(separator: " "))
+    }
+
+    // 3. Style and constraints block
+    var styleItems: [String] = []
+
+    let tone = template.toneAndStyle.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !tone.isEmpty {
+        styleItems.append("Tone and style: \(tone)")
+    }
+
+    let length = template.lengthGuidance.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !length.isEmpty {
+        styleItems.append("Length: \(length)")
+    }
+
+    let structure = template.outputStructure.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !structure.isEmpty {
+        styleItems.append("Output structure: \(structure)")
+    }
+
+    let formatting = template.formattingRules.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !formatting.isEmpty {
+        styleItems.append("Formatting rules: \(formatting)")
+    }
+
+    let constraints = template.constraints.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !constraints.isEmpty {
+        styleItems.append("Constraints: \(constraints)")
+    }
+
+    if !styleItems.isEmpty {
+        lines.append("")
+        lines.append("Style and constraints:")
+        for item in styleItems {
+            lines.append("- \(item)")
+        }
+    }
+
+    // 4. Optional examples
+    let examples = template.examples.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !examples.isEmpty {
+        lines.append("")
+        lines.append("Examples or patterns to follow (do not copy verbatim):")
+        lines.append(examples)
+    }
+
+    // 5. Context from you
+    let context = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !context.isEmpty {
+        lines.append("")
+        lines.append("Context:")
+        lines.append(context)
+    }
+
+    // 6. Final directive
     lines.append("")
-    lines.append("Using all of the above, produce a single final output that matches the template guidance, without restating these instructions.")
+    lines.append("Using the objective, style guidance, and context above, produce a single final answer. Do not restate these instructions.")
 
     return lines.joined(separator: "\n")
 }
@@ -130,7 +169,7 @@ struct ContentView: View {
         }
         .sheet(isPresented: $isShowingTemplateEditor) {
             TemplateEditorView(
-                template: $editorDraft,
+                draft: $editorDraft,
                 isNew: editorIsNew,
                 onSave: { updated in
                     if editorIsNew {
