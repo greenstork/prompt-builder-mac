@@ -30,12 +30,11 @@ final class StatusBarController {
         let newPromptItem = NSMenuItem(
             title: "New prompt",
             action: #selector(newPrompt),
-            keyEquivalent: ""
+            keyEquivalent: "p"        // the P key
         )
+        newPromptItem.keyEquivalentModifierMask = [.option, .shift]  // ⌥⇧
         newPromptItem.target = self
         menu.addItem(newPromptItem)
-
-        menu.addItem(NSMenuItem.separator())
 
         // Quit application
         let quitItem = NSMenuItem(

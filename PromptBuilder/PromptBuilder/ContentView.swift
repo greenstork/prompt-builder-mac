@@ -195,7 +195,7 @@ struct ContentView: View {
             }
             .padding(.horizontal, 20)
         }
-        .frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44)
+        .frame(maxWidth: .infinity, minHeight: 60, maxHeight: 60)
     }
 
     // MARK: Step content
