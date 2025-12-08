@@ -1,0 +1,29 @@
+# macOS finder cruft
+.DS_Store
+*/.DS_Store
+.AppleDouble
+.LSOverride
+
+# Icon files
+Icon?
+
+# Thumbnails
+._*
+
+# Xcode build artifacts
+build/
+Build/
+DerivedData/
+
+# Xcode user settings
+xcuserdata/
+*.xcuserstate
+
+# SwiftPM
+.swiftpm/
+.build/
+
+# Misc IDE files
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
