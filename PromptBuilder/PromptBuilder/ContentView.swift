@@ -1,6 +1,63 @@
 import SwiftUI
 import AppKit
 
+// Build the final prompt string from a template and captured notes
+func buildPrompt(template: Template, notes: String) -> String {
+    var lines: [String] = []
+
+    lines.append("You are helping me draft content using a reusable prompt template.")
+
+    if !template.taskOneLiner.isEmpty {
+        lines.append("Task: \(template.taskOneLiner)")
+    }
+    if !template.detailedObjective.isEmpty {
+        lines.append("Objective: \(template.detailedObjective)")
+    }
+    if !template.outputChannel.isEmpty {
+        lines.append("Channel or output type: \(template.outputChannel).")
+    }
+    if !template.audience.isEmpty {
+        lines.append("Audience: \(template.audience)")
+    }
+    if !template.toneAndStyle.isEmpty {
+        lines.append("Tone and style: \(template.toneAndStyle)")
+    }
+    if !template.lengthGuidance.isEmpty {
+        lines.append("Length guidance: \(template.lengthGuidance)")
+    }
+    if !template.outputStructure.isEmpty {
+        lines.append("Output structure: \(template.outputStructure)")
+    }
+    if !template.formattingRules.isEmpty {
+        lines.append("Formatting rules: \(template.formattingRules)")
+    }
+    if !template.constraints.isEmpty {
+        lines.append("Constraints and guardrails: \(template.constraints)")
+    }
+    if !template.persona.isEmpty {
+        lines.append("Persona or role: \(template.persona)")
+    }
+    if !template.examples.isEmpty {
+        lines.append("Here are example outputs that illustrate the desired style:")
+        lines.append(template.examples)
+    }
+
+    lines.append("")
+
+    let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !trimmedNotes.isEmpty {
+        lines.append("Context from me (use this carefully, do not invent missing facts):")
+        lines.append(trimmedNotes)
+    } else {
+        lines.append("Context: I will provide additional context separately if needed.")
+    }
+
+    lines.append("")
+    lines.append("Using all of the above, produce a single final output that matches the template guidance, without restating these instructions.")
+
+    return lines.joined(separator: "\n")
+}
+
 private enum WizardStep: Int {
     case chooseTemplate = 0
     case captureContext = 1
@@ -8,15 +65,28 @@ private enum WizardStep: Int {
 }
 
 struct ContentView: View {
+    @EnvironmentObject var templateStore: TemplateStore
+
     @State private var step: WizardStep = .chooseTemplate
-    @State private var selectedTemplateId: TemplateId = .prd
+    @State private var selectedTemplateId: UUID?
     @State private var notes: String = ""
     @State private var hasCopied: Bool = false
+
+    @State private var isShowingTemplateEditor = false
+    @State private var editorIsNew = true
+    @State private var editorDraft = Template.empty()
+
+    @State private var isShowingDeleteAlert = false
+    @State private var templatePendingDelete: Template?
 
     @StateObject private var voiceToText = VoiceToText()
 
     private var currentTemplate: Template {
-        template(for: selectedTemplateId)
+        if let id = selectedTemplateId,
+           let found = templateStore.templates.first(where: { $0.id == id }) {
+            return found
+        }
+        return templateStore.templates.first ?? Template.empty()
     }
 
     private var prompt: String {
@@ -25,26 +95,70 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Slim wizard header band
             wizardBar
 
-            // Main step content area
             contentForCurrentStep
                 .padding(.top, 8)
                 .padding(.horizontal, 20)
 
             Divider()
 
-            // Bottom nav bar
             navigationBar
                 .padding(.top, 8)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
         }
-        .frame(minWidth: 720, minHeight: 460)
+        .frame(minWidth: 720, minHeight: 560)
         .background(Color(NSColor.windowBackgroundColor))
         .onAppear {
             voiceToText.requestAuthorization()
+            if selectedTemplateId == nil {
+                selectedTemplateId = templateStore.templates.first?.id
+            }
+
+            DispatchQueue.main.async {
+                resizeWindowToFitCurrentTemplates()
+            }
+        }
+        .onChange(of: templateStore.templates.count, initial: false) { oldCount, newCount in
+            DispatchQueue.main.async {
+                resizeWindowForTemplateCountChange(from: oldCount, to: newCount)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .promptBuilderStartVoice)) { _ in
+            handleGlobalStartVoice()
+        }
+        .sheet(isPresented: $isShowingTemplateEditor) {
+            TemplateEditorView(
+                template: $editorDraft,
+                isNew: editorIsNew,
+                onSave: { updated in
+                    if editorIsNew {
+                        templateStore.add(updated)
+                        selectedTemplateId = updated.id
+                    } else {
+                        templateStore.update(updated)
+                        selectedTemplateId = updated.id
+                    }
+                    isShowingTemplateEditor = false
+                },
+                onCancel: {
+                    isShowingTemplateEditor = false
+                }
+            )
+        }
+        .alert("Delete template", isPresented: $isShowingDeleteAlert) {
+            Button("Delete", role: .destructive) {
+                if let template = templatePendingDelete {
+                    performDelete(template)
+                }
+                templatePendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                templatePendingDelete = nil
+            }
+        } message: {
+            Text("Are you sure you want to delete \"\(templatePendingDelete?.name ?? "this template")\"? This cannot be undone.")
         }
     }
 
@@ -52,10 +166,8 @@ struct ContentView: View {
 
     private var wizardBar: some View {
         ZStack {
-            // Background band across full width
             Color.accentColor.opacity(0.07)
 
-            // Step pills + arrows
             HStack(spacing: 8) {
                 StepPill(
                     index: 1,
@@ -83,8 +195,7 @@ struct ContentView: View {
             }
             .padding(.horizontal, 20)
         }
-        // Fixed slim height for the header, roughly a bit taller than the pills
-        .frame(maxWidth: .infinity, minHeight: 60, maxHeight: 60)
+        .frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44)
     }
 
     // MARK: Step content
@@ -101,35 +212,51 @@ struct ContentView: View {
         }
     }
 
-    // STEP 1 – template chooser with strong icons
+    // MARK: Step 1 - template chooser
 
     private var chooseTemplateStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("What do you want to generate?")
-                .font(.title2)
-                .fontWeight(.semibold)
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("What do you want to generate?")
+                        .font(.title2)
+                        .fontWeight(.semibold)
 
-            Text("Pick the artifact. You will speak your voice prompt next.")
-                .font(.body)
-                .foregroundColor(.secondary)
+                    Text("Pick the prompt output and format. You will speak your voice prompt next.")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Button {
+                    startNewTemplate()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus.circle.fill")
+                        Text("New template")
+                    }
+                }
+                .buttonStyle(.bordered)
+            }
 
             List {
-                ForEach(ALL_TEMPLATES, id: \.id) { template in
+                ForEach(templateStore.templates) { template in
                     HStack(spacing: 12) {
                         ZStack {
                             Circle()
-                                .fill(colorForTemplate(template.id).opacity(0.18))
+                                .fill(colorForTemplate(template).opacity(0.18))
                                 .frame(width: 34, height: 34)
 
                             Image(systemName: template.iconSystemName)
                                 .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(colorForTemplate(template.id))
+                                .foregroundColor(colorForTemplate(template))
                         }
 
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(template.label)
+                            Text(template.name)
                                 .font(.system(size: 14, weight: .semibold))
-                            Text(template.description)
+                            Text(template.summary)
                                 .font(.system(size: 12))
                                 .foregroundColor(.secondary)
                                 .lineLimit(2)
@@ -137,9 +264,25 @@ struct ContentView: View {
 
                         Spacer()
 
-                        if template.id == selectedTemplateId {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.accentColor)
+                        HStack(spacing: 8) {
+                            if template.id == selectedTemplateId {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.accentColor)
+                            }
+
+                            Button {
+                                startEditing(template)
+                            } label: {
+                                Image(systemName: "pencil")
+                            }
+                            .buttonStyle(.borderless)
+
+                            Button {
+                                queueDelete(template)
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
                         }
                     }
                     .padding(.vertical, 6)
@@ -153,11 +296,11 @@ struct ContentView: View {
         }
     }
 
-    // STEP 2 – Voice to Text capture
+    // MARK: Step 2 - voice capture
 
     private var captureContextStep: some View {
         VStack(alignment: .center, spacing: 16) {
-            Text(currentTemplate.label)
+            Text(currentTemplate.name)
                 .font(.title2)
                 .fontWeight(.semibold)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -193,7 +336,7 @@ struct ContentView: View {
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: 360)
                     } else if !voiceToText.transcript.isEmpty {
-                        Text("Voice prompt captured. You can re-record to replace it or go to the prompt.")
+                        Text("Voice prompt captured. You can re record to replace it or go to the prompt.")
                             .font(.footnote)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
@@ -250,7 +393,7 @@ struct ContentView: View {
         .disabled(!voiceToText.isAuthorized)
     }
 
-    // STEP 3 – prompt review
+    // MARK: Step 3 - prompt review
 
     private var reviewPromptStep: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -266,19 +409,19 @@ struct ContentView: View {
                 HStack(spacing: 10) {
                     ZStack {
                         Circle()
-                            .fill(colorForTemplate(currentTemplate.id).opacity(0.18))
+                            .fill(colorForTemplate(currentTemplate).opacity(0.18))
                             .frame(width: 32, height: 32)
 
                         Image(systemName: currentTemplate.iconSystemName)
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(colorForTemplate(currentTemplate.id))
+                            .foregroundColor(colorForTemplate(currentTemplate))
                     }
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(currentTemplate.label)
+                        Text(currentTemplate.name)
                             .font(.subheadline)
                             .fontWeight(.semibold)
-                        Text(currentTemplate.description)
+                        Text(currentTemplate.summary)
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -294,7 +437,7 @@ struct ContentView: View {
                             .fill(Color(NSColor.textBackgroundColor))
                     )
 
-            ScrollView {
+                ScrollView {
                     Text(notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                          ? "Voice prompt not recognized. Go back to Voice to Text and try recording again."
                          : prompt)
@@ -384,7 +527,7 @@ struct ContentView: View {
         hasCopied = false
     }
 
-    // MARK: Recording + clipboard
+    // MARK: Recording and clipboard
 
     private func toggleRecording() {
         if voiceToText.isListening {
@@ -415,20 +558,155 @@ struct ContentView: View {
         }
     }
 
-    // MARK: Icon color helper
+    // MARK: Global "New prompt" handler
 
-    private func colorForTemplate(_ id: TemplateId) -> Color {
-        switch id {
-        case .execSlackSummary:
-            return Color.purple
-        case .formalEmail:
-            return Color.orange
-        case .prd:
-            return Color.blue
-        case .visionDoc:
-            return Color.green
-        case .heroSlide:
-            return Color.cyan
+    private func handleGlobalStartVoice() {
+        // Bring Prompt Builder to the front
+        NSApp.activate(ignoringOtherApps: true)
+
+        // Go to Step 1 of the wizard
+        step = .chooseTemplate
+
+        // Reset state, but do not start recording
+        hasCopied = false
+        notes = ""
+        voiceToText.reset()
+
+        // Optionally, you could pick a default template here if none is selected
+        if selectedTemplateId == nil {
+            selectedTemplateId = templateStore.templates.first?.id
+        }
+    }
+
+    // MARK: Template editor helpers
+
+    private func startNewTemplate() {
+        editorIsNew = true
+        editorDraft = Template.empty()
+        isShowingTemplateEditor = true
+    }
+
+    private func startEditing(_ template: Template) {
+        editorIsNew = false
+        editorDraft = template
+        isShowingTemplateEditor = true
+    }
+
+    private func queueDelete(_ template: Template) {
+        templatePendingDelete = template
+        isShowingDeleteAlert = true
+    }
+
+    private func performDelete(_ template: Template) {
+        guard let index = templateStore.templates.firstIndex(of: template) else {
+            return
+        }
+
+        templateStore.delete(at: IndexSet(integer: index))
+
+        if template.id == selectedTemplateId {
+            selectedTemplateId = templateStore.templates.first?.id
+        }
+
+        if templateStore.templates.isEmpty {
+            step = .chooseTemplate
+        }
+
+        DispatchQueue.main.async {
+            resizeWindowToFitCurrentTemplates()
+        }
+    }
+
+    // MARK: Window sizing
+
+    private func heightForTemplateCount(_ count: Int) -> CGFloat {
+        let minHeight: CGFloat = 560
+        let maxHeight: CGFloat = 860
+
+        // Less “base chrome” above and below the list
+        let chromeHeight: CGFloat = 230
+
+        // Closer to the actual row height inside the List
+        let rowHeight: CGFloat = 54
+
+        let maxVisibleRows: CGFloat = 7
+
+        let clampedCount = max(count, 1)
+        let rows = min(CGFloat(clampedCount), maxVisibleRows)
+
+        var target = chromeHeight + rowHeight * rows
+
+        if target < minHeight {
+            target = minHeight
+        } else if target > maxHeight {
+            target = maxHeight
+        }
+
+        return target
+    }
+
+    private func resizeWindowToFitCurrentTemplates() {
+        guard let window = NSApplication.shared.windows.first(where: { $0.isVisible && $0.isKeyWindow }) else {
+            return
+        }
+        if window.attachedSheet != nil { return }
+
+        let targetHeight = heightForTemplateCount(templateStore.templates.count)
+
+        var frame = window.frame
+        let currentHeight = frame.size.height
+        let delta = targetHeight - currentHeight
+
+        if abs(delta) < 1 { return }
+
+        frame.origin.y -= delta
+        frame.size.height = targetHeight
+        window.setFrame(frame, display: true, animate: true)
+    }
+
+    private func resizeWindowForTemplateCountChange(from oldCount: Int, to newCount: Int) {
+        guard oldCount != newCount else { return }
+        guard let window = NSApplication.shared.windows.first(where: { $0.isVisible && $0.isKeyWindow }) else {
+            return
+        }
+        if window.attachedSheet != nil { return }
+
+        let currentHeight = window.frame.size.height
+        let computedHeight = heightForTemplateCount(newCount)
+
+        var targetHeight: CGFloat
+
+        if newCount > oldCount {
+            targetHeight = max(currentHeight, computedHeight)
+        } else {
+            targetHeight = min(currentHeight, computedHeight)
+        }
+
+        let delta = targetHeight - currentHeight
+        if abs(delta) < 1 { return }
+
+        var frame = window.frame
+        frame.origin.y -= delta
+        frame.size.height = targetHeight
+        window.setFrame(frame, display: true, animate: true)
+    }
+
+    // MARK: Color helper
+
+    private func colorForTemplate(_ template: Template) -> Color {
+        let name = template.name.lowercased()
+        if name.contains("slack") {
+            return .purple
+        } else if name.contains("email") {
+            return .orange
+        } else if name.contains("prd") || name.contains("requirements") {
+            return .blue
+        } else if name.contains("vision") {
+            return .green
+        } else if name.contains("slide") {
+            return .cyan
+        } else {
+            return .accentColor
         }
     }
 }
