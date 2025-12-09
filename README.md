@@ -11,7 +11,7 @@ This is a personal project and is not affiliated with any employer.
 ## Install
 
 1. Download the latest macOS build from the GitHub Releases page:  
-   [Prompt Builder – latest release](https://github.com/greenstork/prompt-builder-mac/releases/tag/v0.9.1)
+   [Prompt Builder – latest release](https://github.com/greenstork/prompt-builder-mac/releases/tag/v0.9.2)
 2. Open the downloaded `.zip` file.
 3. Drag `Prompt Builder.app` into your `Applications` folder.
 4. On first launch, macOS may warn that the app is from an unidentified developer.  
