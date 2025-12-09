@@ -119,6 +119,7 @@ struct ContentView: View {
     @State private var templatePendingDelete: Template?
 
     @StateObject private var voiceToText = VoiceToText()
+    @State private var notificationObserver: NSObjectProtocol?
 
     private var currentTemplate: Template {
         if let id = selectedTemplateId,
@@ -599,22 +600,15 @@ struct ContentView: View {
 
     // MARK: Global "New prompt" handler
 
+    // MARK: Global "New prompt" handler
     private func handleGlobalStartVoice() {
-        // Bring Prompt Builder to the front
-        NSApp.activate(ignoringOtherApps: true)
+        print("ContentView: Received promptBuilderStartVoice")
 
-        // Go to Step 1 of the wizard
+        // Reset wizard back to step 1 and clear prior state.
         step = .chooseTemplate
-
-        // Reset state, but do not start recording
-        hasCopied = false
         notes = ""
         voiceToText.reset()
-
-        // Optionally, you could pick a default template here if none is selected
-        if selectedTemplateId == nil {
-            selectedTemplateId = templateStore.templates.first?.id
-        }
+        hasCopied = false
     }
 
     // MARK: Template editor helpers

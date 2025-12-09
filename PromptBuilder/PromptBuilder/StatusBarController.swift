@@ -1,42 +1,44 @@
 import AppKit
 
-final class StatusBarController: NSObject {
+final class StatusBarController {
 
     private let statusItem: NSStatusItem
-    private let menu: NSMenu
     private let startNewPromptHandler: () -> Void
 
-    init(startNewPrompt: @escaping () -> Void) {
+    init(startNewPromptHandler: @escaping () -> Void) {
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        self.menu = NSMenu()
-        self.startNewPromptHandler = startNewPrompt
-
-        super.init()
+        self.startNewPromptHandler = startNewPromptHandler
 
         if let button = statusItem.button {
-            // Use a distinct icon so it is not confused with the generic microphone.
+            // Use a distinct icon for Prompt Builder
             button.image = NSImage(
-                systemSymbolName: "text.bubble",
+                systemSymbolName: "square.and.pencil",
                 accessibilityDescription: "Prompt Builder"
             )
+            button.image?.isTemplate = true
         }
 
-        configureMenu()
+        constructMenu()
     }
 
-    private func configureMenu() {
-        // New Prompt
+    // MARK: - Menu
+
+    private func constructMenu() {
+        let menu = NSMenu()
+
+        // New prompt (shows ⌥⇧P in the menu)
         let newPromptItem = NSMenuItem(
-            title: "New prompt    ⌥⇧P",
+            title: "New prompt",
             action: #selector(didSelectNewPrompt),
-            keyEquivalent: ""
+            keyEquivalent: "p"
         )
+        newPromptItem.keyEquivalentModifierMask = [.option, .shift]
         newPromptItem.target = self
         menu.addItem(newPromptItem)
 
-        menu.addItem(.separator())
+        menu.addItem(NSMenuItem.separator())
 
-        // Quit
+        // Quit app
         let quitItem = NSMenuItem(
             title: "Quit Prompt Builder",
             action: #selector(didSelectQuit),
@@ -48,7 +50,10 @@ final class StatusBarController: NSObject {
         statusItem.menu = menu
     }
 
+    // MARK: - Actions
+
     @objc private func didSelectNewPrompt() {
+        print("StatusBarController: New prompt selected from menu")
         startNewPromptHandler()
     }
 

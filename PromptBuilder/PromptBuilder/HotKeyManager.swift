@@ -2,49 +2,48 @@ import Cocoa
 import Carbon
 
 final class HotKeyManager {
+
     static let shared = HotKeyManager()
+    private init() {}
 
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
 
     func registerGlobalHotKey() {
-        unregisterGlobalHotKey()
+        guard hotKeyRef == nil else { return }
 
-        // Option + Shift
+        // Option + Shift + P
+        let keyCode: UInt32 = UInt32(kVK_ANSI_P)
         let modifiers: UInt32 = UInt32(optionKey | shiftKey)
-        let keyCode: UInt32 = UInt32(kVK_ANSI_P)   // the "P" key
 
-        var hotKeyID = EventHotKeyID()
-        hotKeyID.signature = OSType(0)  // signature is unused here
-        hotKeyID.id = UInt32(1)
-
+        // Event we care about
         var eventSpec = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),
             eventKind: UInt32(kEventHotKeyPressed)
         )
 
-        // Callback for when the hotkey is pressed
-        let callback: EventHandlerUPP = { _, event, _ in
-            var hkID = EventHotKeyID()
+        let callback: EventHandlerUPP = { _, eventRef, _ in
+            guard let eventRef = eventRef else { return noErr }
+
+            var hotKeyID = EventHotKeyID()
             GetEventParameter(
-                event,
-                EventParamName(kEventParamDirectObject),
-                EventParamType(typeEventHotKeyID),
+                eventRef,
+                UInt32(kEventParamDirectObject),
+                UInt32(typeEventHotKeyID),
                 nil,
-                MemoryLayout<EventHotKeyID>.size,
+                MemoryLayout.size(ofValue: hotKeyID),
                 nil,
-                &hkID
+                &hotKeyID
             )
 
-            if hkID.id == 1 {
-                NotificationCenter.default.post(name: .promptBuilderStartVoice, object: nil)
+            if hotKeyID.id == 1 {
+                HotKeyManager.shared.handleHotKeyPressed()
             }
 
             return noErr
         }
 
-        // Install the handler
-        let statusHandler = InstallEventHandler(
+        InstallEventHandler(
             GetEventDispatcherTarget(),
             callback,
             1,
@@ -53,11 +52,11 @@ final class HotKeyManager {
             &eventHandlerRef
         )
 
-        if statusHandler != noErr {
-            NSLog("Failed to install hotkey event handler, status \(statusHandler)")
-        }
+        var hotKeyID = EventHotKeyID(
+            signature: OSType(0x50424248), // 'PBBH' arbitrary signature
+            id: 1
+        )
 
-        // Register the hot key
         let status = RegisterEventHotKey(
             keyCode,
             modifiers,
@@ -68,16 +67,23 @@ final class HotKeyManager {
         )
 
         if status != noErr {
-            NSLog("Failed to register global hot key, status \(status)")
+            print("HotKeyManager: failed to register hotkey, status \(status)")
+        } else {
+            print("HotKeyManager: registered Option+Shift+P")
         }
     }
 
+    private func handleHotKeyPressed() {
+        print("HotKeyManager: Option+Shift+P pressed")
+        NotificationCenter.default.post(name: .promptBuilderActivate, object: nil)
+    }
+
     func unregisterGlobalHotKey() {
-        if let hotKeyRef {
+        if let hotKeyRef = hotKeyRef {
             UnregisterEventHotKey(hotKeyRef)
             self.hotKeyRef = nil
         }
-        if let eventHandlerRef {
+        if let eventHandlerRef = eventHandlerRef {
             RemoveEventHandler(eventHandlerRef)
             self.eventHandlerRef = nil
         }
